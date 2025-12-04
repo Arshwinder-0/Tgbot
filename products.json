@@ -1,0 +1,57 @@
+{
+  "netflix": {
+    "name": "Netflix Premium",
+    "normal_price": "₹120/month",
+    "sunday_price": "₹96/month",
+    "sunday_discount": "20% OFF",
+    "description": "4K Ultra HD streaming with shared profile access",
+    "features": ["4K Quality", "4 Screens", "All Content", "Shared Profile"],
+    "why_cheap": "We source directly from bulk family plans and share costs among multiple users, passing savings to you.",
+    "payment_qr": "https://i.imgur.com/placeholder.png",
+    "upi_id": "tds-store@upi"
+  },
+  "youtube": {
+    "name": "YouTube Premium",
+    "normal_price": "₹35/month",
+    "sunday_price": "₹28/month",
+    "sunday_discount": "20% OFF",
+    "description": "Ad-free YouTube with background play and Music Premium",
+    "features": ["No Ads", "Background Play", "YouTube Music", "Downloads"],
+    "why_cheap": "Regional pricing combined with family plan optimization makes this 80% cheaper than individual plans.",
+    "payment_qr": "https://i.imgur.com/placeholder.png",
+    "upi_id": "tds-store@upi"
+  },
+  "prime": {
+    "name": "Prime Video",
+    "normal_price": "₹150/6 months",
+    "sunday_price": "₹120/6 months",
+    "sunday_discount": "20% OFF",
+    "description": "Amazon Prime Video with all movies and shows",
+    "features": ["All Content", "4K Streaming", "Multiple Devices", "Originals"],
+    "why_cheap": "Long-term subscription sharing reduces per-user cost significantly.",
+    "payment_qr": "https://i.imgur.com/placeholder.png",
+    "upi_id": "tds-store@upi"
+  },
+  "chaupal": {
+    "name": "Chaupal TV",
+    "normal_price": "₹80/month",
+    "sunday_price": "₹64/month",
+    "sunday_discount": "20% OFF",
+    "description": "Premium Punjabi content streaming platform",
+    "features": ["Punjabi Shows", "Movies", "Live TV", "Multi-Device"],
+    "why_cheap": "Direct partnership with content providers gives us wholesale rates.",
+    "payment_qr": "https://i.imgur.com/placeholder.png",
+    "upi_id": "tds-store@upi"
+  },
+  "capcut": {
+    "name": "CapCut Pro",
+    "normal_price": "Contact for price",
+    "sunday_price": "Special Sunday Discount",
+    "sunday_discount": "Ask for Sunday Price",
+    "description": "Professional video editing with premium features",
+    "features": ["No Watermark", "Premium Effects", "Cloud Storage", "All Tools"],
+    "why_cheap": "We purchase team/enterprise licenses and distribute at minimal margin.",
+    "payment_qr": "https://i.imgur.com/placeholder.png",
+    "upi_id": "tds-store@upi"
+  }
+}
