@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: tds-bot
+    env: node
+    region: singapore
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: WHATSAPP_NUMBER
+        value: "919024487624"
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
