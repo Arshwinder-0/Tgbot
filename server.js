@@ -2,17 +2,71 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const moment = require('moment-timezone');
-const fs = require('fs');
-const path = require('path');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const axios = require('axios');
-const multer = require('multer');
-
-// Initialize AI
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 // Load products
-const products = require('./products.json');
+const products = {
+  "netflix": {
+    "name": "Netflix Premium",
+    "normal_price": "₹120/month",
+    "sunday_price": "₹96/month",
+    "sunday_discount": "20% OFF",
+    "description": "4K Ultra HD streaming with shared profile access",
+    "features": ["4K Quality", "4 Screens", "All Content", "Shared Profile"],
+    "why_cheap": "We source directly from bulk family plans and share costs among multiple users, passing savings to you.",
+    "upi_id": "arshs@ptyes",
+    "amount": 120,
+    "sunday_amount": 96
+  },
+  "youtube": {
+    "name": "YouTube Premium",
+    "normal_price": "₹35/month",
+    "sunday_price": "₹28/month",
+    "sunday_discount": "20% OFF",
+    "description": "Ad-free YouTube with background play and Music Premium",
+    "features": ["No Ads", "Background Play", "YouTube Music", "Downloads"],
+    "why_cheap": "Regional pricing combined with family plan optimization makes this 80% cheaper than individual plans.",
+    "upi_id": "arshs@ptyes",
+    "amount": 35,
+    "sunday_amount": 28
+  },
+  "prime": {
+    "name": "Prime Video",
+    "normal_price": "₹150/6 months",
+    "sunday_price": "₹120/6 months",
+    "sunday_discount": "20% OFF",
+    "description": "Amazon Prime Video with all movies and shows",
+    "features": ["All Content", "4K Streaming", "Multiple Devices", "Originals"],
+    "why_cheap": "Long-term subscription sharing reduces per-user cost significantly.",
+    "upi_id": "arshs@ptyes",
+    "amount": 150,
+    "sunday_amount": 120
+  },
+  "chaupal": {
+    "name": "Chaupal TV",
+    "normal_price": "₹80/month",
+    "sunday_price": "₹64/month",
+    "sunday_discount": "20% OFF",
+    "description": "Premium Punjabi content streaming platform",
+    "features": ["Punjabi Shows", "Movies", "Live TV", "Multi-Device"],
+    "why_cheap": "Direct partnership with content providers gives us wholesale rates.",
+    "upi_id": "arshs@ptyes",
+    "amount": 80,
+    "sunday_amount": 64
+  },
+  "capcut": {
+    "name": "CapCut Pro",
+    "normal_price": "₹350/month",
+    "sunday_price": "₹280/month",
+    "sunday_discount": "20% OFF",
+    "description": "Professional video editing with premium features",
+    "features": ["No Watermark", "Premium Effects", "Cloud Storage", "All Tools"],
+    "why_cheap": "We purchase team/enterprise licenses and distribute at minimal margin.",
+    "upi_id": "arshs@ptyes",
+    "amount": 350,
+    "sunday_amount": 280
+  }
+};
 
 // Initialize bot
 const token = process.env.BOT_TOKEN;
@@ -22,13 +76,8 @@ const bot = new TelegramBot(token, { polling: true });
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve static files (QR code)
-app.use(express.static('public'));
-app.use(express.json());
-
 // Store user sessions
 const userSessions = {};
-const paymentProofs = {};
 
 // Check if it's Sunday (Indian Time)
 function isSunday() {
@@ -36,44 +85,66 @@ function isSunday() {
     return now.day() === 0; // 0 = Sunday
 }
 
-// Get AI response from Gemini
-async function getAIResponse(userMessage, context = '') {
-    try {
-        const model = genAI.getGenerativeModel({ model: "gemini-pro" });
-        
-        const prompt = `
-        You are TDS (The Diamond Store) AI assistant. You help customers with subscription purchases.
-        
-        Context: ${context}
-        
-        Customer Message: "${userMessage}"
-        
-        Rules for response:
-        1. Be friendly and professional
-        2. Keep responses concise but helpful
-        3. If about products/prices, mention we have Sunday offers
-        4. If asked about legitimacy, mention we have 500+ customers
-        5. If asked about payment, mention UPI: arshs@ptyes
-        6. If unsure, suggest checking /help or /products
-        7. Always end with a call to action like "Check /products" or "Type /help"
-        
-        Products we sell:
-        - Netflix Premium: ₹120/month (Sunday: ₹96)
-        - YouTube Premium: ₹35/month (Sunday: ₹28)
-        - Prime Video: ₹150/6 months (Sunday: ₹120)
-        - Chaupal TV: ₹80/month (Sunday: ₹64)
-        - CapCut Pro: ₹350/month (Sunday: ₹280)
-        
-        Respond naturally as a helpful assistant:
-        `;
-        
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text();
-    } catch (error) {
-        console.error('AI Error:', error);
-        return "I'm here to help with TDS products! You can check available products with /products or get help with /help.";
+// Get AI-like response
+function getAIResponse(userMessage) {
+    const lowerMsg = userMessage.toLowerCase();
+    
+    // Predefined responses for common questions
+    const responses = {
+        'hello': '👋 Hello! Welcome to TDS Bot! How can I help you today? 😊',
+        'hi': '👋 Hi there! Looking for amazing deals on subscriptions?',
+        'hey': '👋 Hey! Ready to save on premium services?',
+        'price': '💰 Check our amazing prices! Use /products to see all products or ask for a specific one like "Netflix price?"',
+        'how much': '💰 Our prices start from ₹28/month! Use /products to see all options.',
+        'buy': '🛒 Great! Which product would you like to buy? Use /products to browse or tell me the product name.',
+        'purchase': '🛒 Ready to purchase? First select a product from /products',
+        'netflix': '🎬 Netflix Premium is ₹120/month (Sunday: ₹96). Features: 4K, 4 screens, all content. Want to buy? /buy_netflix',
+        'youtube': '📺 YouTube Premium is ₹35/month (Sunday: ₹28). Features: No ads, background play, downloads. /buy_youtube',
+        'prime': '🎬 Prime Video is ₹150/6 months (Sunday: ₹120). All movies & shows in 4K. /buy_prime',
+        'capcut': '✂️ CapCut Pro is ₹350/month (Sunday: ₹280). No watermark, premium effects. /buy_capcut',
+        'chaupal': '📡 Chaupal TV is ₹80/month (Sunday: ₹64). Punjabi content, multi-device. /buy_chaupal',
+        'sunday': isSunday() ? 
+            '🎉 YES! Sunday offers are ACTIVE! 20% OFF all products. Check /sunday for prices!' : 
+            '⏳ Sunday offers unlock every Sunday. Check /sunday for countdown.',
+        'offer': '🎁 We have Sunday offers (20% OFF) and bulk discounts! Check /sunday for current offers.',
+        'discount': '🎁 Sunday: 20% OFF all products! Also bulk order discounts. /sunday',
+        'cheap': '💰 Our prices are low because we use bulk family plans and regional pricing. /whycheap for details.',
+        'real': '✅ 100% genuine! 500+ customers, instant activation, 7-day warranty. /help',
+        'legit': '✅ Completely legit! We provide official subscriptions with full support.',
+        'trust': '🤝 Trusted by 500+ customers! Manual verification, 24/7 support, 7-day warranty.',
+        'payment': '💳 Pay via UPI: arshs@ptyes. We show QR code during purchase. /help',
+        'upi': '💳 Our UPI ID: arshs@ptyes. Payment via any UPI app.',
+        'how to pay': '💳 During purchase, we show QR code. Scan with GPay/PhonePe/Paytm or send to arshs@ptyes.',
+        'contact': `📞 Contact: WhatsApp - https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}\n24/7 support!`,
+        'support': `📞 WhatsApp support: https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}\nWe reply within minutes!`,
+        'help': '🆘 Use /help for detailed guide or just ask me anything!',
+        'thank': '😊 You\'re welcome! Let me know if you need anything else!',
+        'thanks': '😊 Happy to help! Enjoy your savings with TDS!',
+        'bye': '👋 Goodbye! Come back anytime for great deals!',
+        'ok': '👍 Got it! Need anything else?',
+        'yes': '👍 Great! What would you like to do next?',
+        'no': '👌 No problem! Let me know if you change your mind.',
+        'what can you do': '🤖 I can:\n• Show product prices /products\n• Process purchases\n• Explain Sunday offers /sunday\n• Answer questions\n• Guide payment process\n\nTry asking anything!',
+        'who are you': '🤖 I\'m TDS Bot - your assistant for buying premium subscriptions at amazing prices!'
+    };
+    
+    // Check for exact matches first
+    for (const [key, response] of Object.entries(responses)) {
+        if (lowerMsg === key || lowerMsg.includes(` ${key} `) || lowerMsg.startsWith(key) || lowerMsg.endsWith(key)) {
+            return response;
+        }
     }
+    
+    // Check for product mentions
+    for (const [key, product] of Object.entries(products)) {
+        if (lowerMsg.includes(key) || lowerMsg.includes(product.name.toLowerCase())) {
+            const price = isSunday() ? product.sunday_price : product.normal_price;
+            return `🎯 ${product.name} - ${price}\n\n${product.description}\n\nFeatures: ${product.features.join(', ')}\n\nBuy now: /buy_${key}`;
+        }
+    }
+    
+    // Generic response for other queries
+    return `🤖 I'm TDS Bot! I help you buy premium subscriptions at amazing prices. 😊\n\nTry:\n• /products - View all products\n• /sunday - Check Sunday offers\n• /help - Get assistance\n\nOr ask about specific products like "Netflix price?"`;
 }
 
 // Format product message
@@ -206,7 +277,8 @@ bot.onText(/\/products/, (msg) => {
     if (isSun) {
         productsMessage += `🎁 *SUNDAY OFFERS ACTIVE! 20% OFF*\n\n`;
     } else {
-        productsMessage += `⏳ *Sunday offers unlock in ${7 - moment().tz('Asia/Kolkata').day()} days*\n\n`;
+        const daysToSunday = (7 - moment().tz('Asia/Kolkata').day()) % 7;
+        productsMessage += `⏳ *Sunday in ${daysToSunday} days*\n\n`;
     }
     
     for (const [key, product] of Object.entries(products)) {
@@ -224,7 +296,7 @@ bot.onText(/\/products/, (msg) => {
                     { text: "🎁 Check Sunday Offers", callback_data: "check_sunday" }
                 ],
                 [
-                    { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER}` }
+                    { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}` }
                 ]
             ]
         }
@@ -267,7 +339,7 @@ bot.onText(/\/sunday/, (msg) => {
                     ],
                     [
                         { text: "🎬 Buy Prime (₹120)", callback_data: "buy_prime_sunday" },
-                        { text: "📱 Buy CapCut (₹280)", callback_data: "buy_capcut_sunday" }
+                        { text: "✂️ Buy CapCut (₹280)", callback_data: "buy_capcut_sunday" }
                     ]
                 ]
             }
@@ -334,8 +406,8 @@ bot.onText(/\/whycheap/, (msg) => {
 });
 
 // Individual product commands
-['netflix', 'youtube', 'prime', 'chaupal', 'capcut'].forEach(product => {
-    bot.onText(new RegExp(`\/${product}`), (msg) => {
+Object.keys(products).forEach(product => {
+    bot.onText(new RegExp(`\/${product}$`), (msg) => {
         const chatId = msg.chat.id;
         const productInfo = getProductMessage(product);
         bot.sendMessage(chatId, productInfo.message, { 
@@ -347,7 +419,7 @@ bot.onText(/\/whycheap/, (msg) => {
                     ],
                     [
                         { text: "🎁 Sunday Offer", callback_data: `sunday_${product}` },
-                        { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER}` }
+                        { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}` }
                     ]
                 ]
             }
@@ -375,30 +447,29 @@ bot.onText(/\/buy_(.+)/, async (msg, match) => {
     await processPurchase(chatId, productKey);
 });
 
-// Callback queries (for inline buttons)
+// Callback queries
 bot.on('callback_query', async (callbackQuery) => {
     const chatId = callbackQuery.message.chat.id;
     const data = callbackQuery.data;
     
-    // Handle buy callbacks
     if (data.startsWith('buy_')) {
         const productKey = data.replace('buy_', '').replace('_sunday', '');
         await processPurchase(chatId, productKey, data.includes('_sunday'));
     }
-    
-    // Handle Sunday check
     else if (data === 'check_sunday') {
         bot.sendMessage(chatId, isSunday() ? 
             "🎉 Yes! Sunday offers are ACTIVE! 20% OFF all products. Use /sunday to see prices." : 
             "⏳ Sunday offers are not active. Check /sunday for countdown."
         );
     }
-    
-    // Handle Sunday info
     else if (data.startsWith('sunday_')) {
         const productKey = data.replace('sunday_', '');
         const productInfo = getProductMessage(productKey, true);
         bot.sendMessage(chatId, productInfo.message, { parse_mode: 'Markdown' });
+    }
+    else if (data === 'view_products') {
+        bot.sendMessage(chatId, "🛒 Opening products...", { parse_mode: 'Markdown' });
+        bot.sendMessage(chatId, "Check out all products: /products");
     }
     
     bot.answerCallbackQuery(callbackQuery.id);
@@ -429,7 +500,7 @@ async function processPurchase(chatId, productKey, forceSunday = false) {
 ${useSundayPrice ? '🎁 *Sunday Discount Applied!*' : ''}
 
 📋 *Process:*
-1. Pay ₹${amount} via QR/UPI
+1. Pay ₹${amount} via UPI
 2. Upload payment screenshot
 3. Get WhatsApp link
 4. Activation in 15-30 mins
@@ -438,36 +509,23 @@ ${useSundayPrice ? '🎁 *Sunday Discount Applied!*' : ''}
 UPI ID: \`${product.upi_id}\`
 Amount: ₹${amount}
 
-*Scan QR code below to pay:*
+*Payment Instructions:*
+1. Open GPay/PhonePe/Paytm
+2. Send ₹${amount} to \`${product.upi_id}\`
+3. Take screenshot of "Payment Successful"
+4. Send screenshot here
+
+*After payment, send screenshot or type /upload*
     `;
     
-    await bot.sendMessage(chatId, buyMessage, { parse_mode: 'Markdown' });
-    
-    // Send QR code
-    try {
-        const qrUrl = `${process.env.WEBSITE_URL || 'http://localhost:3000'}/payss.png`;
-        await bot.sendPhoto(chatId, qrUrl, {
-            caption: `📱 Scan to pay ₹${amount}\nUPI: \`${product.upi_id}\`\n\nAfter payment, send screenshot or type /upload`,
-            reply_markup: {
-                inline_keyboard: [[
-                    { text: "📸 I've Paid - Upload Screenshot", callback_data: "upload_now" }
-                ]]
-            }
-        });
-    } catch (error) {
-        await bot.sendMessage(chatId, 
-            `📱 *Manual Payment*\n\nUPI ID: \`${product.upi_id}\`\nAmount: ₹${amount}\n\nAfter payment, send screenshot or type /upload`,
-            { parse_mode: 'Markdown' }
-        );
-    }
-    
-    // Send payment instructions
-    setTimeout(() => {
-        bot.sendMessage(chatId, 
-            `*Payment Instructions:*\n\n1. Open GPay/PhonePe/Paytm\n2. Send ₹${amount} to \`${product.upi_id}\`\n3. Take screenshot of "Payment Successful"\n4. Send screenshot here\n\nOr click: /upload`,
-            { parse_mode: 'Markdown' }
-        );
-    }, 1000);
+    await bot.sendMessage(chatId, buyMessage, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [[
+                { text: "📸 I've Paid - Upload Screenshot", callback_data: "upload_now" }
+            ]]
+        }
+    });
 }
 
 // Upload command
@@ -491,7 +549,7 @@ bot.onText(/\/upload/, (msg) => {
     );
 });
 
-// Handle photo/document messages (payment proof)
+// Handle photo messages
 bot.on('photo', async (msg) => {
     const chatId = msg.chat.id;
     const session = userSessions[chatId];
@@ -500,61 +558,16 @@ bot.on('photo', async (msg) => {
         return;
     }
     
-    await handlePaymentProof(chatId, msg, 'photo');
-});
-
-bot.on('document', async (msg) => {
-    const chatId = msg.chat.id;
-    const session = userSessions[chatId];
-    
-    if (!session || session.step !== 'upload') {
-        return;
-    }
-    
-    await handlePaymentProof(chatId, msg, 'document');
-});
-
-// Process payment proof
-async function handlePaymentProof(chatId, msg, type) {
-    const session = userSessions[chatId];
     const product = products[session.product];
+    const orderId = `TDS${Date.now().toString().slice(-8)}`;
     
-    // Store proof info
-    paymentProofs[chatId] = {
-        product: session.product,
-        amount: session.amount,
-        userId: msg.from.id,
-        username: msg.from.username,
-        timestamp: Date.now(),
-        messageId: msg.message_id
-    };
+    // Create WhatsApp message
+    const whatsappMessage = `Hello! I have purchased ${product.name} (₹${session.amount}) from TDS Telegram Bot. Order ID: ${orderId}. Payment completed via UPI. Please activate my subscription.`;
+    const encodedMessage = encodeURIComponent(whatsappMessage);
+    const whatsappLink = `https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}?text=${encodedMessage}`;
     
-    // Verify payment (basic check)
-    const verifyMessage = `
-✅ *Payment Proof Received!*
-
-📦 *Order Summary:*
-• Product: ${product.name}
-• Amount: ₹${session.amount}
-• Date: ${new Date().toLocaleString('en-IN')}
-• Status: Under Verification
-
-🔄 *Verifying payment...*
-    `;
-    
-    await bot.sendMessage(chatId, verifyMessage, { parse_mode: 'Markdown' });
-    
-    // Simulate verification (2 seconds)
-    setTimeout(async () => {
-        const orderId = `TDS${Date.now().toString().slice(-8)}`;
-        
-        // Create WhatsApp message
-        const whatsappMessage = `Hello! I have purchased ${product.name} (₹${session.amount}) from TDS Telegram Bot. Order ID: ${orderId}. Payment completed via UPI. Please activate my subscription.`;
-        const encodedMessage = encodeURIComponent(whatsappMessage);
-        const whatsappLink = `https://wa.me/${process.env.WHATSAPP_NUMBER}?text=${encodedMessage}`;
-        
-        const successMessage = `
-🎉 *Payment Verified Successfully!*
+    const successMessage = `
+🎉 *Payment Received!*
 
 📋 *Order Confirmed:*
 • Order ID: ${orderId}
@@ -573,22 +586,22 @@ async function handlePaymentProof(chatId, msg, type) {
 📞 *Support:* 24/7 on WhatsApp
 
 *Thank you for choosing TDS!* 😊
-        `;
-        
-        await bot.sendMessage(chatId, successMessage, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [[
-                    { 
-                        text: "📱 Open WhatsApp for Activation", 
-                        url: whatsappLink 
-                    }
-                ]]
-            }
-        });
-        
-        // Send order receipt
-        const receipt = `
+    `;
+    
+    await bot.sendMessage(chatId, successMessage, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [[
+                { 
+                    text: "📱 Open WhatsApp for Activation", 
+                    url: whatsappLink 
+                }
+            ]]
+        }
+    });
+    
+    // Send receipt
+    const receipt = `
 🧾 *Order Receipt - TDS*
 ━━━━━━━━━━━━━━━━
 📅 Date: ${new Date().toLocaleDateString('en-IN')}
@@ -600,174 +613,58 @@ async function handlePaymentProof(chatId, msg, type) {
 💳 Method: UPI
 🔗 UPI ID: ${product.upi_id}
 ━━━━━━━━━━━━━━━━
-📞 Support: https://wa.me/${process.env.WHATSAPP_NUMBER}
+📞 Support: https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}
 ⏱️ ETA: 15-30 minutes
 🛡️ Warranty: 7 days
 ━━━━━━━━━━━━━━━━
-        `;
-        
-        await bot.sendMessage(chatId, receipt, { parse_mode: 'Markdown' });
-        
-        // Notify admin
-        if (process.env.ADMIN_CHAT_ID) {
-            const adminMsg = `
-🛒 *NEW ORDER #${orderId}*
-━━━━━━━━━━━━━━━━
-👤 Customer: @${msg.from.username || 'No username'}
-🆔 User ID: ${msg.from.id}
-📦 Product: ${product.name}
-💰 Amount: ₹${session.amount}
-⏰ Time: ${new Date().toLocaleString('en-IN')}
-            `;
-            
-            try {
-                await bot.sendMessage(process.env.ADMIN_CHAT_ID, adminMsg, { parse_mode: 'Markdown' });
-                
-                // Forward payment proof to admin
-                if (type === 'photo' && msg.photo) {
-                    const photoId = msg.photo[msg.photo.length - 1].file_id;
-                    await bot.sendPhoto(process.env.ADMIN_CHAT_ID, photoId, {
-                        caption: `Payment proof for Order #${orderId}`
-                    });
-                }
-            } catch (error) {
-                console.error('Admin notification failed:', error);
-            }
-        }
-        
-        // Clear session
-        delete userSessions[chatId];
-        
-    }, 2000);
-}
+    `;
+    
+    await bot.sendMessage(chatId, receipt, { parse_mode: 'Markdown' });
+    
+    // Clear session
+    delete userSessions[chatId];
+});
 
-// ===================== AI TEXT HANDLER =====================
-
-// Handle all text messages (AI responses)
+// Handle text messages
 bot.on('message', async (msg) => {
-    // Skip if it's a command or not text
-    if (!msg.text || msg.text.startsWith('/')) return;
+    // Skip commands and photos
+    if (!msg.text || msg.text.startsWith('/') || msg.photo) return;
     
     const chatId = msg.chat.id;
-    const userMessage = msg.text.toLowerCase().trim();
+    const response = getAIResponse(msg.text);
     
-    // Check for common questions first (fast responses)
-    const quickResponses = {
-        'hello': '👋 Hello! Welcome to TDS! How can I help you today? 😊',
-        'hi': '👋 Hi there! Looking for amazing deals on subscriptions?',
-        'hey': '👋 Hey! Ready to save on premium services?',
-        'price': '💰 Check our amazing prices! Use /products to see all products or ask for a specific one like "Netflix price?"',
-        'how much': '💰 Our prices start from ₹28/month! Use /products to see all options.',
-        'buy': '🛒 Great! Which product would you like to buy? Use /products to browse or tell me the product name.',
-        'purchase': '🛒 Ready to purchase? First select a product from /products',
-        'netflix': '🎬 Netflix Premium is ₹120/month (Sunday: ₹96). Features: 4K, 4 screens, all content. Want to buy? /buy_netflix',
-        'youtube': '📺 YouTube Premium is ₹35/month (Sunday: ₹28). Features: No ads, background play, downloads. /buy_youtube',
-        'prime': '🎬 Prime Video is ₹150/6 months (Sunday: ₹120). All movies & shows in 4K. /buy_prime',
-        'capcut': '✂️ CapCut Pro is ₹350/month (Sunday: ₹280). No watermark, premium effects. /buy_capcut',
-        'chaupal': '📡 Chaupal TV is ₹80/month (Sunday: ₹64). Punjabi content, multi-device. /buy_chaupal',
-        'sunday': isSunday() ? 
-            '🎉 YES! Sunday offers are ACTIVE! 20% OFF all products. Check /sunday for prices!' : 
-            '⏳ Sunday offers unlock every Sunday. Check /sunday for countdown.',
-        'offer': '🎁 We have Sunday offers (20% OFF) and bulk discounts! Check /sunday for current offers.',
-        'discount': '🎁 Sunday: 20% OFF all products! Also bulk order discounts. /sunday',
-        'cheap': '💰 Our prices are low because we use bulk family plans and regional pricing. /whycheap for details.',
-        'real': '✅ 100% genuine! 500+ customers, instant activation, 7-day warranty. /help',
-        'legit': '✅ Completely legit! We provide official subscriptions with full support.',
-        'trust': '🤝 Trusted by 500+ customers! Manual verification, 24/7 support, 7-day warranty.',
-        'payment': '💳 Pay via UPI: arshs@ptyes. We show QR code during purchase. /help',
-        'upi': '💳 Our UPI ID: arshs@ptyes. Payment via any UPI app.',
-        'how to pay': '💳 During purchase, we show QR code. Scan with GPay/PhonePe/Paytm or send to arshs@ptyes.',
-        'contact': `📞 Contact: WhatsApp - https://wa.me/${process.env.WHATSAPP_NUMBER}\n24/7 support!`,
-        'support': `📞 WhatsApp support: https://wa.me/${process.env.WHATSAPP_NUMBER}\nWe reply within minutes!`,
-        'help': '🆘 Use /help for detailed guide or just ask me anything!',
-        'thank': '😊 You\'re welcome! Let me know if you need anything else!',
-        'thanks': '😊 Happy to help! Enjoy your savings with TDS!',
-        'bye': '👋 Goodbye! Come back anytime for great deals!',
-        'ok': '👍 Got it! Need anything else?',
-        'yes': '👍 Great! What would you like to do next?',
-        'no': '👌 No problem! Let me know if you change your mind.'
-    };
-    
-    // Check for quick response
-    for (const [key, response] of Object.entries(quickResponses)) {
-        if (userMessage.includes(key)) {
-            await bot.sendMessage(chatId, response, { parse_mode: 'Markdown' });
-            return;
-        }
-    }
-    
-    // Check if it's a product inquiry
-    const productKeys = Object.keys(products);
-    for (const key of productKeys) {
-        if (userMessage.includes(key) || userMessage.includes(products[key].name.toLowerCase())) {
-            const productInfo = getProductMessage(key);
-            await bot.sendMessage(chatId, productInfo.message, { parse_mode: 'Markdown' });
-            return;
-        }
-    }
-    
-    // Check for purchase intent
-    if (userMessage.includes('want to buy') || userMessage.includes('buy') || 
-        userMessage.includes('purchase') || userMessage.includes('order') ||
-        userMessage.includes('take') || userMessage.includes('get')) {
-        
-        // Extract product name
-        let foundProduct = null;
-        for (const [key, product] of Object.entries(products)) {
-            if (userMessage.includes(key) || userMessage.includes(product.name.toLowerCase().split(' ')[0])) {
-                foundProduct = key;
-                break;
-            }
-        }
-        
-        if (foundProduct) {
-            await bot.sendMessage(chatId, 
-                `🛒 You want to buy ${products[foundProduct].name}? Great choice!\n\nPrice: ${isSunday() ? products[foundProduct].sunday_price : products[foundProduct].normal_price}\n\nClick here to proceed: /buy_${foundProduct}`,
-                { parse_mode: 'Markdown' }
-            );
-        } else {
-            await bot.sendMessage(chatId, 
-                `🛒 You want to buy something? Great!\n\nPlease tell me which product:\n• Netflix\n• YouTube\n• Prime\n• Chaupal\n• CapCut\n\nOr check all: /products`,
-                { parse_mode: 'Markdown' }
-            );
-        }
-        return;
-    }
-    
-    // Use AI for other messages
-    try {
-        // Show typing indicator
-        await bot.sendChatAction(chatId, 'typing');
-        
-        // Get AI response
-        const aiResponse = await getAIResponse(msg.text, `User is asking about TDS products. Current day: ${isSunday() ? 'Sunday - offers active' : 'Not Sunday'}.`);
-        
-        // Send response
-        await bot.sendMessage(chatId, aiResponse, { 
-            parse_mode: 'Markdown',
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        { text: "🛒 View Products", callback_data: "view_products" },
-                        { text: "🎁 Sunday Offers", callback_data: "check_sunday" }
-                    ],
-                    [
-                        { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER}` }
-                    ]
+    await bot.sendMessage(chatId, response, { 
+        parse_mode: 'Markdown',
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: "🛒 View Products", callback_data: "view_products" },
+                    { text: "🎁 Sunday Offers", callback_data: "check_sunday" }
+                ],
+                [
+                    { text: "📱 Contact Support", url: `https://wa.me/${process.env.WHATSAPP_NUMBER || '919024487624'}` }
                 ]
-            }
-        });
-    } catch (error) {
-        console.error('Message handling error:', error);
-        await bot.sendMessage(chatId, 
-            `I'm here to help with TDS products! 😊\n\nTry:\n• /products - View all\n• /sunday - Offers\n• Or ask about specific product\n\nNeed help? /help`,
-            { parse_mode: 'Markdown' }
-        );
-    }
+            ]
+        }
+    });
 });
 
 // ===================== SERVER SETUP =====================
 
-// Serve QR code
-app.get('/payss.png', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', '
+// Health check
+app.get('/', (req, res) => {
+    res.json({
+        status: 'online',
+        service: 'TDS Telegram Bot',
+        time: new Date().toISOString(),
+        sunday: isSunday()
+    });
+});
+
+// Start server
+app.listen(PORT, () => {
+    console.log(`🚀 TDS Bot running on port ${PORT}`);
+    console.log(`🤖 Bot started successfully!`);
+    console.log(`📅 Sunday: ${isSunday() ? 'ACTIVE 🎁' : 'INACTIVE'}`);
+    console.log(`📞 WhatsApp: ${process.env.WHATSAPP_NUMBER || '919024487624'}`);
+});
